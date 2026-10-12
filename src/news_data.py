@@ -1,7 +1,10 @@
 import os, re, html, unicodedata, requests
+import ollama, chromadb, tiktoken
 from dotenv import load_dotenv
 from datetime import datetime, timedelta, time
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from transformers import AutoTokenizer
+from llm_model import LLAMA_MODEL_ID
 
 # Load environment variables
 load_dotenv()
@@ -68,7 +71,7 @@ def normalize_data(data:dict):
     return data_list
 
 # 3. cleaning the data
-def clean_text(text: str):
+def clean_text(text: list):
     """
     The function takes the normalized data and cleans it by removing any unwanted characters or formatting issues.
     """
@@ -89,7 +92,7 @@ def clean_text(text: str):
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
 
-def clean_data(data_list: list):
+def clean_data(data_list: dict):
     """
     The function takes the normalized data and cleans it by using the function `clean_text`.
     It returns a list of cleaned data dictionaries containing the cleaned text and metadata.
@@ -104,12 +107,22 @@ def clean_data(data_list: list):
     return cleaned_data
 
 # 3. chunking the data
-# defining the text splitter
+# Define a Recursive Token Splitter
+def ollama_token_count(cleaned_data: dict) -> int:
+    """
+    The function returns the number of tokens in a string using the Ollama tokenizer.
+    """
+    text = cleaned_data.get("text", "")
+    encoding = AutoTokenizer.from_pretrained(LLAMA_MODEL_ID)
+    num_tokens= len(encoding.encode(text))
+    return num_tokens
 
-splitter = RecursiveCharacterTextSplitter(
+recursiveSplitter = RecursiveCharacterTextSplitter(
     chunk_size=512,
-    chunk_overlap=0.15*512)
+    chunk_overlap=0.15*512,
+    length_function=ollama_token_count)
 
+# Chunking the data
 def chunk_data(cleaned_data: list):
     """
     The function takes the cleanded data from the function `clean_data` and chunks it
@@ -117,7 +130,7 @@ def chunk_data(cleaned_data: list):
     chunked_data = []
     for data in cleaned_data:
         text = data.get("text", "")
-        chunks = splitter.split_text(text)
+        chunks = recursiveSplitter.split_text(text)
         chunked_data.append({
             "chunks": chunks,
             "metadata": data.get("metadata", {})
@@ -125,7 +138,21 @@ def chunk_data(cleaned_data: list):
     return chunked_data
 
 # 4. embedding the data
+def embed_data(chunked_data:list, embedding_model):
+    """
+    The function takes the chunked data from the function `chunk_data` and embeds it using the provided embedding model.
+    """
+    response = ollama.embeddings(model=LLAMA_MODEL_ID, prompt=chunk)
+    embeddings = response.get("embeddings", [])
 
+    pass
+
+# 5. storing the data in a vector database using ChromaDB
+# initialize the vectordb
+client = chromadb.Client()
+collection = client.create_collection(name="news_data")
+def store_data_in_chromadb():
+    pass
 
 endpoint_data = fetch_endpoint_data(topic="technology", endpoint="search", page_size=2)
 print(endpoint_data)
