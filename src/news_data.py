@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, time
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from transformers import AutoTokenizer
 from llm_model import LLAMA_MODEL_ID
+import math
 
 # Load environment variables
 load_dotenv()
@@ -119,7 +120,7 @@ def ollama_token_count(cleaned_data: dict) -> int:
 
 recursiveSplitter = RecursiveCharacterTextSplitter(
     chunk_size=512,
-    chunk_overlap=0.15*512,
+    chunk_overlap=math.floor(0.15*512),
     length_function=ollama_token_count)
 
 # Chunking the data
@@ -137,22 +138,30 @@ def chunk_data(cleaned_data: list):
         })
     return chunked_data
 
-# 4. embedding the data
-def embed_data(chunked_data:list, embedding_model):
+# 4. embedding the data and storing into a vectorDB
+client = chromadb.Client()
+collection = client.create_collection(name="news_data")
+
+def embed_store_data(chunked_data:list, embedding_model = 'nomic-embed-text'):
     """
     The function takes the chunked data from the function `chunk_data` and embeds it using the provided embedding model.
     """
-    response = ollama.embeddings(model=LLAMA_MODEL_ID, prompt=chunk)
-    embeddings = response.get("embeddings", [])
+    for i, data in enumerate(chunked_data):
+        chunks = data.get("chunks", [])
+        for chunk in chunks:
+            response = ollama.embed(model=embedding_model, input=chunk)
+            embeddings = response.get("embeddings", [])
+            # stores embeddings into the vectorDB
+            collection.add(
+                ids = i,
+                embeddings = embeddings,
+            )
 
+            pass
+
+        pass
     pass
 
-# 5. storing the data in a vector database using ChromaDB
-# initialize the vectordb
-client = chromadb.Client()
-collection = client.create_collection(name="news_data")
-def store_data_in_chromadb():
-    pass
 
 endpoint_data = fetch_endpoint_data(topic="technology", endpoint="search", page_size=2)
 print(endpoint_data)
